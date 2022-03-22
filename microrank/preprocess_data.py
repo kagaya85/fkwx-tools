@@ -5,8 +5,7 @@ import pandas as pd
 from copy import deepcopy
 import numpy as np
 import time
-sys.path.append("../..")
-from preprocess import Span, load_mm_span
+from TraceCRL.preprocess import Span, load_mm_span
 
 root_index = '-1'
 
@@ -38,7 +37,7 @@ def fix_root(span_list: List[Span], mm_root_map: dict):
 
             has_root = False
 
-        spans.append(span)        
+        spans.append(span)
     return spans
 
 
@@ -46,17 +45,18 @@ def get_span() -> List[Span]:
     clickstream_list = [
         'trace_mmfindersynclogicsvr/click_stream_2022-01-17_23629.csv',
         'trace_mmfindersynclogicsvr/click_stream_2022-01-18_23629.csv',
-        ]
+    ]
     callgraph_list = [
         'trace_mmfindersynclogicsvr/tmp17.csv',
         'trace_mmfindersynclogicsvr/tmp18.csv',
-        ]
+    ]
 
     global mm_root_map, span_list
     if len(span_list) == 0:
         mm_root_map, span_data = load_mm_span(clickstream_list, callgraph_list)
         span_data = pd.concat(span_data, axis=0, ignore_index=True)
-        span_data = span_data.groupby('TraceId').apply(lambda x:x.sort_values('StartTime', ascending=True)).reset_index(drop=True)
+        span_data = span_data.groupby('TraceId').apply(
+            lambda x: x.sort_values('StartTime', ascending=True)).reset_index(drop=True)
         span_list = [Span(raw_span) for _, raw_span in span_data.iterrows()]
         if is_wechat:
             span_list = fix_root(span_list, mm_root_map)
@@ -65,20 +65,23 @@ def get_span() -> List[Span]:
 
 
 def get_normal_span() -> List[Span]:
-    clickstream_list = ['trace_mmfindersynclogicsvr/click_stream_2022-01-17_23629.csv']
+    clickstream_list = [
+        'trace_mmfindersynclogicsvr/click_stream_2022-01-17_23629.csv']
     callgraph_list = ['trace_mmfindersynclogicsvr/tmp17.csv']
 
     print('load normal span...')
     root_map, span_data = load_mm_span(clickstream_list, callgraph_list)
     span_data = pd.concat(span_data, axis=0, ignore_index=True)
-    span_data = span_data.groupby('TraceId').apply(lambda x:x.sort_values('StartTime', ascending=True)).reset_index(drop=True)
-    spans = [Span(raw_span) for _, raw_span in span_data.iterrows()] 
+    span_data = span_data.groupby('TraceId').apply(
+        lambda x: x.sort_values('StartTime', ascending=True)).reset_index(drop=True)
+    spans = [Span(raw_span) for _, raw_span in span_data.iterrows()]
     spans = fix_root(spans, root_map)
     return spans
 
 
 def is_root_span(span: Span):
     return span.parentSpanId == '-1'
+
 
 '''
   Query all the service_operation from the input span_list
