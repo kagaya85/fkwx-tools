@@ -304,7 +304,7 @@ class LinearScale(Scale):
         return -tf.log(tf.maximum(tf.abs(self._pre_scale), self._epsilon))
 
     def _div(self, x):
-        # TODO: use epsilon to prevent dividing by zero
+        # to_do: use epsilon to prevent dividing by zero
         return maybe_check_numerics(
             x / self.scale(), message='numeric issues in LinearScale._div')
 

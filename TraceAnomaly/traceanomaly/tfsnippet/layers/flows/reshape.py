@@ -202,7 +202,7 @@ class SpaceToDepthFlow(BaseFlow):
         return True
 
     def _build(self, input=None):
-        # TODO: maybe add more shape check here.
+        # to_do: maybe add more shape check here.
         pass
 
     def _transform(self, x, compute_y, compute_log_det):

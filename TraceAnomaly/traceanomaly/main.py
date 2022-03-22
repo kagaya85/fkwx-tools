@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
+import csv
 import functools
+import math
 
 import os, time
 import click
+import numpy as np
 import tensorflow as tf
 import pandas as pd
 from tensorflow.contrib.framework import arg_scope, add_arg_scope
+from sklearn.metrics import precision_recall_curve
 from sklearn.model_selection import train_test_split
 
 import tfsnippet as spt
@@ -15,6 +19,8 @@ from .readdata import get_data_vae, get_z_dim
 from .MLConfig import (MLConfig,
                        global_config as config,
                        config_options)
+from sklearn.neighbors import KernelDensity
+from sklearn import metrics
 
 class ExpConfig(MLConfig):
     debug_level = -1  # -1: disable all checks;
@@ -35,7 +41,7 @@ class ExpConfig(MLConfig):
 
     # training parameters
     write_summary = False
-    max_epoch = 2000
+    max_epoch = 200
     max_step = None
     batch_size = 256
     
@@ -152,12 +158,8 @@ def main(trainpath, normalpath, abnormalpath, outputpath):
     train_file = trainpath
     normal_file = normalpath
     abnormal_file = abnormalpath
-    output_file = os.path.join('webankdata',
-                               '{}_{}.csv'.format(config.flow_type or 'vae',
-                                                  outputpath))
-    valid_file = os.path.join('webankdata',
-                              'v{}_{}.csv'.format(config.flow_type or 'vae',
-                                                  outputpath))
+    output_file = os.path.join(outputpath, 'test.csv')
+    valid_file = os.path.join(outputpath, 'valid.csv')
     # you can change it by yourself
 
     # read data
@@ -266,18 +268,18 @@ def main(trainpath, normalpath, abnormalpath, outputpath):
     # model_file
     #model_name = ''
     model_name = os.path.join(
-        'webankdata',
+        outputpath,
         'md_{}_{}.model'.format(
             config.flow_type or 'vae',
-            outputpath.split('.')[0]
+            config.max_epoch
         )
     )
 
     with spt.utils.create_session().as_default() as session:
         var_dict = spt.utils.get_variables_as_dict()
         saver = spt.VariableSaver(var_dict, model_name)
-        #if os.path.exists(model_name):
-        if False:
+        if os.path.exists(model_name):
+        # if False:
             print('%s exists' % model_name)
             saver.restore()
         else:
@@ -335,6 +337,86 @@ def main(trainpath, normalpath, abnormalpath, outputpath):
             / config.x_dim
         pd.DataFrame({'score': valid_ans}).to_csv(valid_file, index=False)
 
+        # calculate F1-score, recall, precision
+        print('start calculating F1-score, recall, precision...')
+        kde = KernelDensity(kernel='gaussian', bandwidth=0.5).fit(valid_ans.reshape(-1, 1))
+        test_density = kde.score_samples(test_ans.reshape(-1, 1))
+        test_class = []
+        for density in test_density:
+            test_class.append(1 if math.e**density < 0.001 else 0)
+        test_class = np.asarray(test_class)
+
+        # classification report: F1-score, recall, precision
+        print(metrics.classification_report(y_test, test_class, target_names=['normal', 'abnormal']))
+        # roc auc score
+        print(metrics.roc_auc_score(y_test, -test_ans))
+        prec, recall, thresholds = precision_recall_curve(y_test, -test_ans)
+        p_r_curve = list(zip(prec, recall, thresholds))
+        write_csv_file(outputpath, 'p_r_curve.csv', ("prec", "recall", "thresholds"), p_r_curve)
+
+
+@click.command()
+@click.option('--trainpath', help='The path of train data', metavar='PATH',
+              required=True, type=str)
+@click.option('--normalpath', help='The path of normal data', metavar='PATH',
+              required=True, type=str)
+@click.option('--abnormalpath', help='The path of normal data', metavar='PATH',
+              required=True, type=str)
+@click.option('--outputpath',
+              help='The name of answers. it is relative to webankdata. just name',
+              metavar='PATH',
+              required=True, type=str)
+@config_options(ExpConfig)
+def test(trainpath, normalpath, abnormalpath, outputpath):
+    train_file = trainpath
+    normal_file = normalpath
+    abnormal_file = abnormalpath
+    output_file = os.path.join(outputpath, 'test.csv')
+    valid_file = os.path.join(outputpath, 'valid.csv')
+    # read data
+    (x_train, y_train), (x_test, y_test), flows_test = \
+        get_data_vae(train_file, normal_file, abnormal_file)
+    config.x_dim = x_train.shape[1]
+    test_ans = np.asarray(pd.read_csv(output_file)['score'])
+    valid_ans = np.asarray(pd.read_csv(valid_file)['score'])
+    print('start calculating F1-score, recall, precision...')
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.5).fit(valid_ans.reshape(-1, 1))
+    test_density = kde.score_samples(test_ans.reshape(-1, 1))
+    test_class = []
+    abnormal = 0
+    for density in test_density:
+        test_class.append(1 if math.e**density < 0.001 else 0)
+        if test_class[-1] == 1:
+            abnormal += 1
+    test_class = np.asarray(test_class)
+    print('abnormal', abnormal)
+    print(y_test.shape)
+    # classification report: F1-score, recall, precision
+    print(metrics.classification_report(y_test, test_class, target_names=['normal', 'abnormal']))
+    # roc auc score
+    print(metrics.roc_auc_score(y_test, -test_ans))
+    prec, recall, thresholds = precision_recall_curve(y_test, -test_ans)
+    p_r_curve = list(zip(prec, recall, thresholds))
+    write_csv_file(outputpath, 'p_r_curve.csv', ("prec", "recall", "thresholds"), p_r_curve)
+
+
+def write_csv_file(xp_path, file_name, head, data):
+    path = os.path.join(xp_path, file_name)
+    try:
+        with open(path, 'w', newline='') as csv_file:
+            writer = csv.writer(csv_file, dialect='excel')
+
+            if head is not None:
+                writer.writerow(head)
+
+            for row in data:
+                writer.writerow(row)
+
+            print("Write a CSV file to path %s Successful." % path)
+    except Exception as e:
+        print("Write an CSV file to path: %s, Case: %s" % (path, e))
+
 
 if __name__ == '__main__':
     main()
+    # test()

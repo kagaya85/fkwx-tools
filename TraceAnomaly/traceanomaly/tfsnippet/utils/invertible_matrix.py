@@ -322,7 +322,7 @@ class InvertibleMatrix(VarScopeObject):
                     np.maximum(np.abs(initial_s), self._epsilon))
                 initial_U = np.triu(initial_U, k=1)
 
-                # TODO: use PermutationMatrix to derive P once we can export it
+                # to_do: use PermutationMatrix to derive P once we can export it
                 #
                 # PermutationMatrix is faster, however, it cannot be exported
                 # by just saving the TensorFlow variables.  Thus for the time

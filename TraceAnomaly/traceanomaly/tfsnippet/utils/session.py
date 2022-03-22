@@ -179,7 +179,7 @@ def get_variable_ddi(name,
     Returns:
         tf.Variable or tf.Tensor: The variable or the tensor.
     """
-    # TODO: detect shape from `initial_value` if not specified
+    # to_do: detect shape from `initial_value` if not specified
     v = tf.get_variable(
         name, shape=shape, dtype=dtype, regularizer=regularizer,
         constraint=constraint, trainable=trainable, collections=collections,

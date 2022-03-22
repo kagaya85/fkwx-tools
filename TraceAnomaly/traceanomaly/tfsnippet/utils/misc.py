@@ -168,7 +168,7 @@ class ETA(object):
             float or None: The remaining seconds, or :obj:`None` if
                 the ETA cannot be estimated.
         """
-        # TODO: Maybe we can have a better estimation algorithm here!
+        # to_do: Maybe we can have a better estimation algorithm here!
         if now is None:
             now = time.time()
 
