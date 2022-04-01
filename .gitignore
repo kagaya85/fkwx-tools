@@ -1,7 +1,7 @@
 .idea
 .vscode
 .DS_store
-
+data
 __pycache__
 
 *.csv

@@ -1,18 +1,35 @@
+from msilib import gen_uuid
 import sys
+from tkinter.messagebox import NO
 from typing import List, Callable, Dict
 from pandas.core.frame import DataFrame
 import pandas as pd
 from copy import deepcopy
 import numpy as np
 import time
-from TraceCRL.preprocess import Span, load_mm_span
+from TraceCRL.preprocess import Span, load_mm_span, load_sw_span
 
 root_index = '-1'
 
+all_span_list = []
 span_list = []
+g_start, g_end = 0, 0
 mm_root_map = {}
 is_wechat = True
 
+def search(l: List, target, is_greater: Callable = lambda t,s:t>s.startTime) -> int:
+    left, right = 0, len(l)-1
+
+    while left <= right:
+        mid = (left + right) // 2
+        if is_greater(l[mid], target):
+            right = mid
+        elif is_greater(target, l[mid]):
+            left = mid
+        else:
+            return mid
+
+    return -1
 
 def fix_root(span_list: List[Span], mm_root_map: dict):
     cur_tid = ''
@@ -41,7 +58,10 @@ def fix_root(span_list: List[Span], mm_root_map: dict):
     return spans
 
 
-def get_span() -> List[Span]:
+def get_span(start: int, end: int) -> List[Span]:
+    # trainticket
+    datapath_list = []
+    # wechat
     clickstream_list = [
         'trace_mmfindersynclogicsvr/click_stream_2022-01-17_23629.csv',
         'trace_mmfindersynclogicsvr/click_stream_2022-01-18_23629.csv',
@@ -51,16 +71,39 @@ def get_span() -> List[Span]:
         'trace_mmfindersynclogicsvr/tmp18.csv',
     ]
 
-    global mm_root_map, span_list
-    if len(span_list) == 0:
-        mm_root_map, span_data = load_mm_span(clickstream_list, callgraph_list)
+    global mm_root_map, all_span_list
+    if len(span_data) == 0:
+        if is_wechat:
+            mm_root_map, span_data = load_mm_span(clickstream_list, callgraph_list)
+        else:
+            span_data = load_sw_span(datapath_list)
         span_data = pd.concat(span_data, axis=0, ignore_index=True)
         span_data = span_data.groupby('TraceId').apply(
             lambda x: x.sort_values('StartTime', ascending=True)).reset_index(drop=True)
-        span_list = [Span(raw_span) for _, raw_span in span_data.iterrows()]
+        all_span_list = [Span(raw_span) for _, raw_span in span_data.iterrows()]
         if is_wechat:
-            span_list = fix_root(span_list, mm_root_map)
+            all_span_list = fix_root(all_span_list, mm_root_map)
 
+    global g_start, g_end, span_list
+    if g_start != start or g_end != end:
+        start_idx = search(all_span_list, start)
+        if start_idx < 0:
+           time_local = time.localtime(start/1000)
+           t = time.strftime("%Y-%m-%d %H:%M:%S", time_local)
+           print(f'{t} not found')
+           return span_list
+        
+        end_idx = search(all_span_list, end)
+        if end_idx < 0:
+           time_local = time.localtime(start/1000)
+           t = time.strftime("%Y-%m-%d %H:%M:%S", time_local)
+           print(f'{t} not found')
+           return span_list
+        
+        g_start = start
+        g_end = end
+        span_list = all_span_list[start_idx, end_idx]
+        
     return span_list
 
 
@@ -372,8 +415,9 @@ def get_pagerank_graph(trace_list: List[str], span_list: List[Span]):
     return operation_operation, operation_trace, trace_operation, pr_trace
 
 
+
 if __name__ == '__main__':
-    def timestamp(datetime):
+    def timestamp(datetime) -> int:
         timeArray = time.strptime(datetime, "%Y-%m-%d %H:%M:%S")
         ts = int(time.mktime(timeArray)) * 1000
         # print(ts)
